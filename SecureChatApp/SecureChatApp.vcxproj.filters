@@ -18,6 +18,8 @@
     <ClCompile Include="Source.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ClientSocket.cpp">
+      <Filter>Source Files</Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="utils.h">
