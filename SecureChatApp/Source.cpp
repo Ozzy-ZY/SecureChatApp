@@ -1,78 +1,78 @@
 #include <iostream>
-#include <winsock.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 using namespace std;
-#define Port 9909//The port number is a communication endpoint in a computer network, and it is used to uniquely identify a specific process to which data or messages should be sent. In the context of networking, a port is associated with an IP address to establish a connection between two devices.
-struct sockaddr_in srv;//, the server address is represented by the struct sockaddr_in srv structure. This structure is used to configure the server's network address, including details like the address family, port number, and IP address.
+
+#define maxclient 20
+#define Port 9909
+
+struct sockaddr_in srv;
 fd_set fr, fe, fw;
 int nMaxFd;
 int nSocket;
-int nArrClient[5];//for real life application u need more than 5
-void ProcessNewMessages(int nClientSocket)
-{
-	cout << endl << "Processing the new message for client socket:" << nClientSocket; // Display a message indicating the start of message processing for a specific client socket
-	char buff[256 + 1] = { 0, }; // Initialize a buffer to store the received message
-	int nRet = recv(nClientSocket, buff, 256, 0);// Receive the message from the client socket
-	if (nRet < 0) // Check if an error occurred during message reception
-	{
-		cout << endl << "Something wrong happeng..closing the connection for client";// Display an error message and close the connection for the client socket
+int connectedclients = 0;
+int nArrClient[maxclient];
+
+void ProcessNewMessages(int nClientSocket) {
+	cout << endl << "Processing the new message for client socket:" << nClientSocket;
+	char buff[256 + 1] = { 0 };
+
+	int nRet = recv(nClientSocket, buff, sizeof(buff) - 1, 0);
+
+	if (nRet < 0) {
+		cout << endl << "Something wrong happened...closing the connection for client";
 		closesocket(nClientSocket);
-		for (int nIndex = 0; nIndex < 5; nIndex++) // Remove the client socket from the array of client sockets (assuming nArrClient is a global array)
-		{
-			if (nArrClient[nIndex] == nClientSocket)
-			{
+
+		for (int nIndex = 0; nIndex < maxclient; nIndex++) {
+			if (nArrClient[nIndex] == nClientSocket) {
 				nArrClient[nIndex] = 0;
 				break;
 			}
 		}
 	}
-	else
-	{
-		cout << endl << "the message recevied from client is:" << buff; // Display the received message from the client
-		//send the response to client
-		send(nClientSocket, "processed your request", 23, 0);
-		cout << endl << "**********************************************"; // Display a separator for better visualization
+	else {
+		for (int i = connectedclients - 1; i >= 0; i--) {
+			cout << endl << "Messages sent from client " << nClientSocket;
+			if (nArrClient[i] != nClientSocket) {
+				cout << endl << "Messages sent to client " << nClientSocket;
+				send(nArrClient[i], buff, nRet, 0);
+				cout << endl << "**********************************************";
+			}
+		}
 	}
 }
-void ProccessTheNewRequest()
-{//new connection
-	if (FD_ISSET(nSocket, &fr))
-	{
+
+void ProccessTheNewRequest() {
+	if (FD_ISSET(nSocket, &fr)) {
 		int nLen = sizeof(struct sockaddr);
 		int nClientSocket = accept(nSocket, NULL, &nLen);
-		if (nClientSocket > 0)
-		{
-			//Put it into client fd_set
+
+		if (nClientSocket > 0) {
 			int nIndex;
-			for (nIndex = 0; nIndex < 5; nIndex++)
-			{
-				if (nArrClient[nIndex] == 0)
-				{
+
+			for (nIndex = 0; nIndex < maxclient; nIndex++) {
+				if (nArrClient[nIndex] == 0) {
 					nArrClient[nIndex] = nClientSocket;
 					send(nClientSocket, "got the connection done successfully", 37, 0);
 					break;
 				}
 			}
-			if (nIndex == 5)
-			{
+
+			if (nIndex == maxclient) {
 				cout << endl << "No space for new connections";
 			}
-
 		}
 	}
-	else
-	{
-		for (int nIndex = 0; nIndex < 5; nIndex++)
-		{
-			if (FD_ISSET(nArrClient[nIndex], &fr))
-			{
-				/*got the new message from the client
-				just rec new message
-				just queue that for new workes of your server to fulfill the request*/
+	else {
+		for (int nIndex = 0; nIndex < maxclient; nIndex++) {
+			if (FD_ISSET(nArrClient[nIndex], &fr)) {
 				ProcessNewMessages(nArrClient[nIndex]);
 			}
 		}
 	}
 }
+
 int main() {
 	int nRet = 0;
 	//uses wsa version 2.2
@@ -152,32 +152,24 @@ int main() {
 		FD_SET(nSocket, &fr);
 		FD_SET(nSocket, &fe);
 
-		for (int nIndex = 0; nIndex < 5; nIndex++)
-		{
-			if (nArrClient[nIndex] != 0)
-			{
+		for (int nIndex = 0; nIndex < maxclient; nIndex++) {
+			if (nArrClient[nIndex] != 0) {
 				FD_SET(nArrClient[nIndex], &fr);
 				FD_SET(nArrClient[nIndex], &fe);
-				
 			}
 		}
+		int nRet = select(nMaxFd + 1, &fr, &fw, &fe, &tv);
 
-		nRet = select(nMaxFd + 1, &fr, &fw, &fe, &tv);//The select function is used to wait for activity on the socket. 
-		if (nRet > 0)
-		{
-			//when someone connects or communicates with a message over a dedicated  connection/*please remember that the socket listening to new clients and then communicating with the same client later are not the same.*//*after connection, you get one more socket to communicate with client you need to send/receive messages over the network using that new socket.*/
+		if (nRet > 0) {
 			cout << "someone connected";
+			connectedclients++;
 			cout << "data on port ......processing now....";
-			//process the request/*if (FD_ISSET(nsocket, &fe)){cout << endl << "there is an exception.just get away from here";}if (FD_ISSET(nsocket, &fw)){cout << endl << "ready to write sth";}if (FD_ISSET(nsocket, &fr)){cout << endl << "ready to read. sth new came up at the port";//acept the new connection}break;// Add code here for accepting incoming connections and handling them.
 			ProccessTheNewRequest();
 		}
-		else if (nRet == 0)
-		{
+		else if (nRet == 0) {
 			// No incoming connections or data ready
 		}
-		else
-		{
-			//it fails 
+		else {
 			cout << "Select failed" << endl;
 			closesocket(nSocket);
 			WSACleanup();
